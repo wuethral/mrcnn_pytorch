@@ -11,6 +11,7 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 import transforms as T
 from engine import train_one_epoch, evaluate
 import utils
+#from statistics import creating_plots, creating_table, creating_empty_table
 
 
 class PennFudanDataset(torch.utils.data.Dataset):
@@ -19,15 +20,15 @@ class PennFudanDataset(torch.utils.data.Dataset):
         self.transforms = transforms
         # load all image files, sorting them to
         # ensure that they are aligned
-        self.imgs = list(sorted(os.listdir(os.path.join(root, "PNGImages"))))
-        self.masks = list(sorted(os.listdir(os.path.join(root, "PedMasks"))))
+        self.imgs = list(sorted(os.listdir(os.path.join(root, "images"))))
+        self.masks = list(sorted(os.listdir(os.path.join(root, "masks"))))
 
 
 
     def __getitem__(self, idx):
         # load images and masks
-        img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
-        mask_path = os.path.join(self.root, "PedMasks", self.masks[idx])
+        img_path = os.path.join(self.root, "images", self.imgs[idx])
+        mask_path = os.path.join(self.root, "masks", self.masks[idx])
         img = Image.open(img_path).convert("RGB")
         #print(img.height, img.width)
         # note that we haven't converted the mask to RGB,
@@ -59,7 +60,25 @@ class PennFudanDataset(torch.utils.data.Dataset):
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         # there is only one class
-        labels = torch.ones((num_objs,), dtype=torch.int64)
+        if obj_ids == 249:
+            obj_ids = [1]
+        elif obj_ids == 250:
+            obj_ids = [2]
+        elif obj_ids == 251:
+            obj_ids = [3]
+        elif obj_ids == 252:
+            obj_ids = [4]
+        elif obj_ids == 253:
+            obj_ids = [5]
+        elif obj_ids == 254:
+            obj_ids = [6]
+        elif obj_ids == 255:
+            obj_ids = [7]
+        #labels = torch.ones((num_objs,), dtype=torch.int64)
+        labels = torch.as_tensor(obj_ids, dtype=torch.int64)
+
+        #print(num_objs)
+        #labels = torch.tensor((obj_ids,), dtype=torch.int64)
         masks = torch.as_tensor(masks, dtype=torch.uint8)
 
         image_id = torch.tensor([idx])
@@ -90,7 +109,7 @@ model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
 
 # replace the classifier with a new one, that has
 # num_classes which is user-defined
-num_classes = 2  # 1 class (person) + background
+num_classes = 8  # 1 class (person) + background
 # get number of input features for the classifier
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 # replace the pre-trained head with a new one
@@ -127,7 +146,7 @@ roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'],
 
 # put the pieces together inside a FasterRCNN model
 model = FasterRCNN(backbone,
-                   num_classes=2,
+                   num_classes=8,
                    rpn_anchor_generator=anchor_generator,
                    box_roi_pool=roi_pooler)
 
@@ -162,7 +181,7 @@ def get_transform(train):
     return T.Compose(transforms)
 
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
-dataset = PennFudanDataset('PennFudanPed', get_transform(train=True))
+dataset = PennFudanDataset('DataSet/training_folder', get_transform(train=True))
 data_loader = torch.utils.data.DataLoader(
  dataset, batch_size=2, shuffle=True, num_workers=0,
  collate_fn=utils.collate_fn)
@@ -183,25 +202,27 @@ def main():
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     # our dataset has two classes only - background and person
-    num_classes = 2
+    num_classes = 8
     # use our dataset and defined transformations
-    dataset = PennFudanDataset('PennFudanPed', get_transform(train=False))
-    dataset_test = PennFudanDataset('PennFudanPed', get_transform(train=False))
+    dataset = PennFudanDataset('DataSet/training_folder', get_transform(train=False))
+    dataset_test = PennFudanDataset('DataSet/testing_folder', get_transform(train=False))
 
     # split the dataset in train and test set
     indices = torch.randperm(len(dataset)).tolist()
+    #indices = torch.randperm(len(dataset_test)).tolist()
 
-    dataset = torch.utils.data.Subset(dataset, indices[0:285])
-    dataset_test = torch.utils.data.Subset(dataset_test, indices[285:])
+    dataset = torch.utils.data.Subset(dataset, indices[:])
+    dataset_test = torch.utils.data.Subset(dataset_test, indices[:])
 
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2, shuffle=True, num_workers=0,
+        dataset, batch_size=5, shuffle=True, num_workers=0,
         collate_fn=utils.collate_fn)
 
     data_loader_test = torch.utils.data.DataLoader(
-        dataset_test, batch_size=1, shuffle=False, num_workers=0,
+        dataset_test, batch_size=2, shuffle=False, num_workers=0,
         collate_fn=utils.collate_fn)
+    #print(data_loader_test)
 
     # get the model using our helper function
     model = get_model_instance_segmentation(num_classes)
@@ -219,22 +240,36 @@ def main():
                                                    gamma=0.1)
 
     # let's train it for 10 epochs
-    num_epochs = 10
+    num_epochs = 30
 
     for epoch in range(num_epochs):
+
         # train for one epoch, printing every 10 iterations
         #print(len(model.state_dict()))
-
+        #model_name = 'C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model_2/trainedmodel_' + str(epoch) +'.pt'
+        #model = torch.load(model_name)
         train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
         # update the learning rate
         lr_scheduler.step()
-        # evaluate on the test dataset
-        evaluate(model, data_loader_test, device=device)
-        trained_model_path = 'C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model/trainedmodel_' + str(epoch) + '.pt'
+        trained_model_path = 'C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model_2/trainedmodel_' + str(epoch) + '.pt'
+
         torch.save(model, trained_model_path)
+        # evaluate on the test dataset
+        #model_name = 'C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model_2/trainedmodel_' + str(epoch) +'.pt'
+        #model = torch.load(model_name)
+        #evaluate(model, data_loader_test, device=device)
+        #torch.save(model, trained_model_path)
         #model_weights = 'model_weights_epoch' +str(epoch) + '.pth'
         #torch.save(model.state_dict(), model_weights)
+    ''' 
     print("That's it!")
+    df = creating_empty_table()
+    creating_table(df)
+    df.to_csv('evaluation_folder/table_bbox_segm.csv')
+    creating_plots(df)
+    '''
+    #print(df)
+
 
 if __name__ == '__main__':
     main()

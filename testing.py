@@ -22,7 +22,7 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 ]
 '''
 
-COCO_INSTANCE_CATEGORY_NAMES = ['Schraubenzieher', 'screwdriver', 'fisch']
+COCO_INSTANCE_CATEGORY_NAMES = ['0', 'hand', 'screw', 'screwdriver', 'spire2', 'angle', 'spire1', 'pliers']
 # I will link the notebook in the description
 # You can copy the class names from the description
 # or the notebook
@@ -40,12 +40,10 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 def get_model_instance_segmentation(num_classes):
     # load an instance segmentation model pre-trained pre-trained on COCO
     model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
-
     # get number of input features for the classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     # replace the pre-trained head with a new one
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-
     # now get the number of input features for the mask classifier
     in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
     hidden_layer = 256
@@ -63,28 +61,42 @@ def get_prediction(img_path, threshold=0.5, url=False):
   transform = T.Compose([T.ToTensor()]) # Turn the image into a torch.tensor
   img = transform(img)
   img = img.cuda() # Only if GPU, otherwise comment this line
-  num_classes = 2
+  num_classes = 8
   #model = get_model_instance_segmentation(num_classes)
-  model = torch.load('C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model/trainedmodel_1.pt')
+  model = torch.load('D:/trained_models/z_Trained_Models/Model_3/trained_model_2/trainedmodel_19.pt')
   #model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
 
   model.eval()
   model = model.cuda()
   img = img.cuda()
-  pred = model([img]) # Send the image to the model. This runs on CPU, so its going to take time
+  pred = model([img])
+  print(pred[0]['masks'])
+  # Send the image to the model. This runs on CPU, so its going to take time
   #Let's change it to GPU
   # pred = pred.cpu() # We will just send predictions back to CPU
   # Now we need to extract the bounding boxes and masks
   pred_score = list(pred[0]['scores'].detach().cpu().numpy())
-  pred_t = [pred_score.index(x) for x in pred_score if x > threshold][-1]
+  print('predscores:', pred_score)
+  print(pred[0]['labels'])
+  pred_t = [pred_score.index(x) for x in pred_score if x > 0.22][-1]
+  print('pred_t', pred_t)
   masks = (pred[0]['masks'] > 0.5).squeeze().detach().cpu().numpy()
+  #print('masks:',masks)
   pred_class = [COCO_INSTANCE_CATEGORY_NAMES[i] for i in list(pred[0]['labels'].cpu().numpy())]
-  print(pred[0]['labels'].cpu().numpy())
+
+
   pred_boxes = [[(i[0], i[1]), (i[2], i[3])] for i in list(pred[0]['boxes'].detach().cpu().numpy())]
   masks = masks[:pred_t+1]
+  #if only one pred, otherwise take above
+
+
   pred_boxes = pred_boxes[:pred_t+1]
+  #if only one pred, otherwise take above
+  #pred_boxes = pred_boxes[0]
   pred_class = pred_class[:pred_t+1]
-  return masks, pred_boxes, pred_class
+  #if only one pred, otherwise take above
+  #pred_class = pred_class[0]
+  return masks, pred_boxes, pred_class, pred_score
 
 import matplotlib.pyplot as plt
 #%matplotlib inline
@@ -113,7 +125,8 @@ def random_color_masks(image):
 
 def instance_segmentation(img_path, threshold=0.5, rect_th=3,
                           text_size=1, text_th=3, url=False):
-  masks, boxes, pred_cls = get_prediction(img_path, threshold=threshold, url=url)
+  masks, boxes, pred_cls, pred_score = get_prediction(img_path, threshold=threshold, url=url)
+  print(masks)
   if url:
     img = url_to_image(img_path) # If we have a url image
   else: # Local image
@@ -129,14 +142,25 @@ def instance_segmentation(img_path, threshold=0.5, rect_th=3,
     boxes11 = int(boxes[i][1][0])
     boxes12 = int(boxes[i][1][1])
     boxes2 = (boxes11, boxes12)
+    boxes3 = (boxes11, boxes12-60)
     cv2.rectangle(img, boxes1, boxes2, color=(0, 255, 0), thickness=rect_th)
-    cv2.putText(img, pred_cls[i], boxes1, cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 255, 0), thickness=text_th)
+    cv2.putText(img, pred_cls[i], boxes3, cv2.FONT_HERSHEY_SIMPLEX, text_size*2, (0, 255, 0), thickness=int(text_th*1.5))
+    cv2.putText(img, str(pred_score[i]), boxes2, cv2.FONT_HERSHEY_SIMPLEX, text_size*2, (0, 255, 0), thickness=int(text_th*1.5))
   return img, pred_cls, masks[i]
 
 # I will link the following image in the description
 # We are going to try the function out, first we will download an image
 #!wget https://hips.hearstapps.com/hmg-prod.s3.amazonaws.com/images/10best-cars-group-cropped-1542126037.jpg -O car.jpg
+img_nr = 1
+''' 
+for i in range(334):
+  path_in = 'angles/image_' + str(img_nr) + '.png'
+  img, pred_classes, masks = instance_segmentation(path_in, rect_th=5, text_th=4)
+  path_out = 'angle_masks/angle_mask_' + str(img_nr) + '.png'
 
-img, pred_classes, masks = instance_segmentation('image_334.png', rect_th=5, text_th=4)
+  cv2.imwrite(path_out, img)
+  img_nr += 1
+'''
 
-cv2.imwrite('result0.png', img)
+img, pred_classes, masks = instance_segmentation('DataSet/testing_folder/images/zz_test_plierspink4_cleaned_2.png', rect_th=5, text_th=4)
+cv2.imwrite('masker4.png', img)
