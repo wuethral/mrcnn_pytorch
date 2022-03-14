@@ -1,5 +1,7 @@
 import torch
-import torchvision
+import os
+import cv2
+
 
 #model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
 #model.eval()
@@ -11,7 +13,7 @@ COCO_INSTANCE_CATEGORY_NAMES = [
     'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
     'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
     'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A',
-    'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+    'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',A
     'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
     'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
     'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
@@ -36,22 +38,8 @@ from io import BytesIO
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 # the io and requests libraries are just for loading images from URLS
-''' 
-def get_model_instance_segmentation(num_classes):
-    # load an instance segmentation model pre-trained pre-trained on COCO
-    model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
-    # get number of input features for the classifier
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    # replace the pre-trained head with a new one
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-    # now get the number of input features for the mask classifier
-    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    hidden_layer = 256
-    # and replace the mask predictor with a new one
-    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,
-                                                       hidden_layer,
-                                                       num_classes)
-'''
+
+
 def get_prediction(img_path, threshold=0.5, url=False):
   if url: # We have to request the image
     response = requests.get(img_path)
@@ -61,29 +49,25 @@ def get_prediction(img_path, threshold=0.5, url=False):
   transform = T.Compose([T.ToTensor()]) # Turn the image into a torch.tensor
   img = transform(img)
   img = img.cuda() # Only if GPU, otherwise comment this line
-  num_classes = 8
-  #model = get_model_instance_segmentation(num_classes)
-  model = torch.load('D:/trained_models/z_Trained_Models/Model_3/trained_model_2/trainedmodel_19.pt')
+
+  model = torch.load('trained_models/trained_model_0')
   #model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
 
   model.eval()
   model = model.cuda()
   img = img.cuda()
   pred = model([img])
-  print(pred[0]['masks'])
-  # Send the image to the model. This runs on CPU, so its going to take time
-  #Let's change it to GPU
-  # pred = pred.cpu() # We will just send predictions back to CPU
+
   # Now we need to extract the bounding boxes and masks
   pred_score = list(pred[0]['scores'].detach().cpu().numpy())
   print('predscores:', pred_score)
   print(pred[0]['labels'])
-  pred_t = [pred_score.index(x) for x in pred_score if x > 0.22][-1]
-  print('pred_t', pred_t)
-  masks = (pred[0]['masks'] > 0.5).squeeze().detach().cpu().numpy()
-  #print('masks:',masks)
-  pred_class = [COCO_INSTANCE_CATEGORY_NAMES[i] for i in list(pred[0]['labels'].cpu().numpy())]
 
+  prediction_threshold = 0.9
+  pred_t = [pred_score.index(x) for x in pred_score if x > prediction_threshold][-1]
+  masks = (pred[0]['masks'] > 0.5).squeeze().detach().cpu().numpy()
+
+  pred_class = [COCO_INSTANCE_CATEGORY_NAMES[i] for i in list(pred[0]['labels'].cpu().numpy())]
 
   pred_boxes = [[(i[0], i[1]), (i[2], i[3])] for i in list(pred[0]['boxes'].detach().cpu().numpy())]
   masks = masks[:pred_t+1]
@@ -98,11 +82,6 @@ def get_prediction(img_path, threshold=0.5, url=False):
   #pred_class = pred_class[0]
   return masks, pred_boxes, pred_class, pred_score
 
-import matplotlib.pyplot as plt
-#%matplotlib inline
-#%config InlineBackend.figure_format = 'retina' # For high res images
-
-import cv2 # opencv
 
 from urllib.request import urlopen
 def url_to_image(url, readFlag=cv2.IMREAD_COLOR):
@@ -119,19 +98,18 @@ def random_color_masks(image):
   r = np.zeros_like(image).astype(np.uint8)
   g = np.zeros_like(image).astype(np.uint8)
   b = np.zeros_like(image).astype(np.uint8)
-  r[image==1], g[image==1], b[image==1] = colors[random.randrange(0, 10)]
+  r[image==1], g[image==1], b[image==1] = (0,0,255)  #colors[random.randrange(0, 10)]
   colored_mask = np.stack([r,g,b], axis=2)
   return colored_mask
 
 def instance_segmentation(img_path, threshold=0.5, rect_th=3,
                           text_size=1, text_th=3, url=False):
   masks, boxes, pred_cls, pred_score = get_prediction(img_path, threshold=threshold, url=url)
-  print(masks)
   if url:
     img = url_to_image(img_path) # If we have a url image
   else: # Local image
     img = cv2.imread(img_path)
-  img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # For working with RGB images instead of BGR
+  #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # For working with RGB images instead of BGR
   for i in range(len(masks)):
     rgb_mask = random_color_masks(masks[i])
     img = cv2.addWeighted(img, 1, rgb_mask, 0.5, 0)
@@ -161,6 +139,20 @@ for i in range(334):
   cv2.imwrite(path_out, img)
   img_nr += 1
 '''
+#image_list = os.listdir('D:/Operation_images/video_2(green_screen)')
+image_list = os.listdir('D:/Trained_models_new_augmentation/Model_6/Validation_R_but_green_bg_from_NR/DataSet/images')
+''' 
+for i in range(1, len(image_list), 1):
 
-img, pred_classes, masks = instance_segmentation('DataSet/testing_folder/images/zz_test_plierspink4_cleaned_2.png', rect_th=5, text_th=4)
-cv2.imwrite('masker4.png', img)
+  if i % 10 == 0:
+    #image_path = 'D:/Operation_images/video_2(green_screen)/image_' + str(i) + '.png'
+    image_path = 'D:/Trained_models_new_augmentation/Model_6/Testing_images/image_' + str(i) + '.png'
+    img, pred_classes, masks = instance_segmentation(image_path, rect_th=5, text_th=4)
+    prediction_mask_path = 'D:Trained_models_new_augmentation/Model_6/predicted_masks_testing_images/mask_' + str(i) + '.png'
+    cv2.imwrite(prediction_mask_path, img)
+'''
+for image_name in image_list:
+  image_path = 'D:/Trained_models_new_augmentation/Model_6/Validation_R_but_green_bg_from_NR/DataSet/images/' + image_name
+  img, pred_classes, masks = instance_segmentation(image_path, rect_th=5, text_th=4)
+  prediction_mask_path = 'D:/Trained_models_new_augmentation/Model_6/Validation_R_but_green_bg_from_NR/visual_evaluation/' + image_name
+  cv2.imwrite(prediction_mask_path, img)

@@ -11,7 +11,25 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 import transforms as T
 from engine import train_one_epoch, evaluate
 import utils
-#from statistics import creating_plots, creating_table, creating_empty_table
+
+
+def check_pixel_value(pixel_value):
+    if pixel_value == 249:
+        return 1
+    elif pixel_value == 250:
+        return 2
+    elif pixel_value == 251:
+        return 3
+    elif pixel_value == 252:
+        return 4
+    elif pixel_value == 253:
+        return 5
+    elif pixel_value == 254:
+        return 6
+    elif pixel_value == 255:
+        return 7
+    elif pixel_value == 248:
+        return 4
 
 
 class PennFudanDataset(torch.utils.data.Dataset):
@@ -24,19 +42,19 @@ class PennFudanDataset(torch.utils.data.Dataset):
         self.masks = list(sorted(os.listdir(os.path.join(root, "masks"))))
 
 
-
     def __getitem__(self, idx):
+
         # load images and masks
         img_path = os.path.join(self.root, "images", self.imgs[idx])
         mask_path = os.path.join(self.root, "masks", self.masks[idx])
         img = Image.open(img_path).convert("RGB")
-        #print(img.height, img.width)
         # note that we haven't converted the mask to RGB,
         # because each color corresponds to a different instance
         # with 0 being background
         mask = Image.open(mask_path)
         # convert the PIL Image into a numpy array
         mask = np.array(mask)
+
         # instances are encoded as different colors
         obj_ids = np.unique(mask)
         # first id is the background, so remove it
@@ -48,6 +66,7 @@ class PennFudanDataset(torch.utils.data.Dataset):
 
         # get bounding box coordinates for each mask
         num_objs = len(obj_ids)
+
         boxes = []
         for i in range(num_objs):
             pos = np.where(masks[i])
@@ -55,34 +74,25 @@ class PennFudanDataset(torch.utils.data.Dataset):
             xmax = np.max(pos[1])
             ymin = np.min(pos[0])
             ymax = np.max(pos[0])
-            boxes.append([xmin, ymin, xmax, ymax])
+            if xmin != xmax and ymin != ymax:
+                boxes.append([xmin, ymin, xmax, ymax])
 
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         # there is only one class
-        if obj_ids == 249:
-            obj_ids = [1]
-        elif obj_ids == 250:
-            obj_ids = [2]
-        elif obj_ids == 251:
-            obj_ids = [3]
-        elif obj_ids == 252:
-            obj_ids = [4]
-        elif obj_ids == 253:
-            obj_ids = [5]
-        elif obj_ids == 254:
-            obj_ids = [6]
-        elif obj_ids == 255:
-            obj_ids = [7]
-        #labels = torch.ones((num_objs,), dtype=torch.int64)
+
+        for i in range(len(obj_ids)):
+            value = check_pixel_value(obj_ids[i])
+            obj_ids[i] = value
+
         labels = torch.as_tensor(obj_ids, dtype=torch.int64)
 
-        #print(num_objs)
-        #labels = torch.tensor((obj_ids,), dtype=torch.int64)
         masks = torch.as_tensor(masks, dtype=torch.uint8)
 
         image_id = torch.tensor([idx])
+
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+
         # suppose all instances are not crowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
@@ -93,12 +103,12 @@ class PennFudanDataset(torch.utils.data.Dataset):
         target["image_id"] = image_id
         target["area"] = area
         target["iscrowd"] = iscrowd
-        #print(target)
 
         if self.transforms is not None:
             img, target = self.transforms(img, target)
 
         return img, target
+
 
     def __len__(self):
         return len(self.imgs)
@@ -109,7 +119,7 @@ model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
 
 # replace the classifier with a new one, that has
 # num_classes which is user-defined
-num_classes = 8  # 1 class (person) + background
+num_classes = 5  # 1 class (person) + background
 # get number of input features for the classifier
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 # replace the pre-trained head with a new one
@@ -146,7 +156,7 @@ roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'],
 
 # put the pieces together inside a FasterRCNN model
 model = FasterRCNN(backbone,
-                   num_classes=8,
+                   num_classes=5,
                    rpn_anchor_generator=anchor_generator,
                    box_roi_pool=roi_pooler)
 
@@ -169,15 +179,14 @@ def get_model_instance_segmentation(num_classes):
                                                        hidden_layer,
                                                        num_classes)
 
-
-
     return model
 
+
 def get_transform(train):
+
     transforms = []
     transforms.append(T.ToTensor())
-    #if train:
-    #    transforms.append(T.RandomHorizontalFlip(0.5))
+
     return T.Compose(transforms)
 
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
@@ -189,40 +198,44 @@ data_loader = torch.utils.data.DataLoader(
 images,targets = next(iter(data_loader))
 images = list(image for image in images)
 targets = [{k: v for k, v in t.items()} for t in targets]
+
 output = model(images,targets)   # Returns losses and detections
 # For inference
 model.eval()
 x = [torch.rand(3, 300, 400), torch.rand(3, 500, 400)]
 predictions = model(x)           # Returns predictions
 
-#import parallelTestModule
+
 def main():
-    #extractor = parallelTestModule.ParallelExtractor()
-    #extractor.runInParallel(numProcesses=2, numThreads=4)
+
+    # For training, set it to True. For evaluating, set it to false
+    train_not_eval = False
+
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     # our dataset has two classes only - background and person
-    num_classes = 8
+    num_classes = 5
     # use our dataset and defined transformations
     dataset = PennFudanDataset('DataSet/training_folder', get_transform(train=False))
     dataset_test = PennFudanDataset('DataSet/testing_folder', get_transform(train=False))
 
     # split the dataset in train and test set
-    indices = torch.randperm(len(dataset)).tolist()
-    #indices = torch.randperm(len(dataset_test)).tolist()
+    if train_not_eval:
+        indices = torch.randperm(len(dataset)).tolist()
+    else:
+        indices = torch.randperm(len(dataset_test)).tolist()
 
     dataset = torch.utils.data.Subset(dataset, indices[:])
     dataset_test = torch.utils.data.Subset(dataset_test, indices[:])
 
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=5, shuffle=True, num_workers=0,
+        dataset, batch_size=2, shuffle=True, num_workers=0,
         collate_fn=utils.collate_fn)
 
     data_loader_test = torch.utils.data.DataLoader(
         dataset_test, batch_size=2, shuffle=False, num_workers=0,
         collate_fn=utils.collate_fn)
-    #print(data_loader_test)
 
     # get the model using our helper function
     model = get_model_instance_segmentation(num_classes)
@@ -240,43 +253,24 @@ def main():
                                                    gamma=0.1)
 
     # let's train it for 10 epochs
-    num_epochs = 30
+    num_epochs = 10
 
     for epoch in range(num_epochs):
+        print(epoch)
 
-        # train for one epoch, printing every 10 iterations
-        #print(len(model.state_dict()))
-        #model_name = 'C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model_2/trainedmodel_' + str(epoch) +'.pt'
-        #model = torch.load(model_name)
-        train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
-        # update the learning rate
-        lr_scheduler.step()
-        trained_model_path = 'C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model_2/trainedmodel_' + str(epoch) + '.pt'
+        if train_not_eval:
+            # train for one epoch, printing every 10 iterations
+            train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+            # update the learning rate
+            lr_scheduler.step()
+            trained_model_path = 'trained_models/trainedmodel_' + str(epoch) + '.pt'
+            torch.save(model, trained_model_path)
 
-        torch.save(model, trained_model_path)
-        # evaluate on the test dataset
-        #model_name = 'C:/Users/wuethral/Desktop/mrcnn_pythorch/trained_model_2/trainedmodel_' + str(epoch) +'.pt'
-        #model = torch.load(model_name)
-        #evaluate(model, data_loader_test, device=device)
-        #torch.save(model, trained_model_path)
-        #model_weights = 'model_weights_epoch' +str(epoch) + '.pth'
-        #torch.save(model.state_dict(), model_weights)
-    ''' 
-    print("That's it!")
-    df = creating_empty_table()
-    creating_table(df)
-    df.to_csv('evaluation_folder/table_bbox_segm.csv')
-    creating_plots(df)
-    '''
-    #print(df)
-
+        else:
+            # evaluate on the test dataset
+            model_name = 'trained_models/trainedmodel_' + str(epoch) +'.pt'
+            model = torch.load(model_name)
+            evaluate(model, data_loader_test, device=device)
 
 if __name__ == '__main__':
     main()
-    #num_classes = 2
-    #model1 = get_model_instance_segmentation(num_classes)
-    #model1.load_state_dict(torch.load('model_weights_epoch0.pth'))
-    #model1.eval()
-    #model2 = get_model_instance_segmentation(num_classes)
-    #model2.load_state_dict(torch.load('model_weights_epoch2.pth'))
-    #model2.eval()
