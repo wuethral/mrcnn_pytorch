@@ -195,7 +195,6 @@ class MetricLogger(object):
                     text_file.write(x)
                     text_file.write('\n')
                     text_file.close()
-
                 else:
                     print(log_msg.format(
                         i, len(iterable), eta=eta_string,

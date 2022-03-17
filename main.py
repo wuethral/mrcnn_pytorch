@@ -209,7 +209,7 @@ predictions = model(x)           # Returns predictions
 def main():
 
     # For training, set it to True. For evaluating, set it to false
-    train_not_eval = False
+    train_not_eval = True
 
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -253,7 +253,7 @@ def main():
                                                    gamma=0.1)
 
     # let's train it for 10 epochs
-    num_epochs = 10
+    num_epochs = 2
 
     for epoch in range(num_epochs):
         print(epoch)

@@ -10,7 +10,9 @@ from coco_eval import CocoEvaluator
 import utils
 import json
 
+
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
+
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -124,6 +126,8 @@ def evaluate(model, data_loader, device):
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
+
+    # Writing average stats to statsfile.txt
     print("Averaged stats:", metric_logger)
     text_file = open("statsfile.txt", "a")
     text_file.write("Averaged stats: ")

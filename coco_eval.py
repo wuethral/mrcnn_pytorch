@@ -63,7 +63,6 @@ class CocoEvaluator(object):
             text_file.write('\n')
             if text == 'IoU metric: segm':
                 text_file.write('\n')
-
             text_file.close()
 
     def prepare(self, predictions, iou_type):
