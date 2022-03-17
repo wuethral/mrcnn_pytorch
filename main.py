@@ -209,7 +209,7 @@ predictions = model(x)           # Returns predictions
 def main():
 
     # For training, set it to True. For evaluating, set it to false
-    train_not_eval = False
+    train_not_eval = True
 
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')

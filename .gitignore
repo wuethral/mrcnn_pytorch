@@ -1,7 +1,6 @@
 .idea/
 __pycache__/
 DataSet/
-evaluation_folder/
 predicted_masks/
 trained_models/
 change_wrong_mask_pixels.py
